@@ -16,12 +16,34 @@ class GoogleDriveService
 
     public function __construct()
     {
-        // Inicializa el cliente de Google
+        // Inicializa el cliente de Google (NO CAMBIADO)
         $this->client = new Client();
         $this->client->setApplicationName(env('GOOGLE_APPLICATION_NAME'));
         $this->client->setAuthConfig(storage_path('app/google/service-account.json'));
         $this->client->addScope(GoogleDrive::DRIVE);
         $this->client->setAccessType('offline');
+
+        // Añadido: usa credenciales de Railway si están definidas (sobrescribe las locales)
+        $saJson   = env('GOOGLE_SERVICE_ACCOUNT_JSON'); // Cuenta de servicio (recomendado)
+        $oauthJson= env('GOOGLE_OAUTH_WEB_JSON');       // OAuth web (opcional)
+
+        if (!empty($saJson)) {
+            $cfg = json_decode($saJson, true);
+            if (is_array($cfg)) {
+                $this->client->setAuthConfig($cfg);
+                Log::info('GoogleDriveService: usando GOOGLE_SERVICE_ACCOUNT_JSON');
+            } else {
+                Log::warning('GOOGLE_SERVICE_ACCOUNT_JSON inválido; se mantiene archivo local');
+            }
+        } elseif (!empty($oauthJson)) {
+            $cfg = json_decode($oauthJson, true);
+            if (is_array($cfg)) {
+                $this->client->setAuthConfig($cfg);
+                Log::info('GoogleDriveService: usando GOOGLE_OAUTH_WEB_JSON');
+            } else {
+                Log::warning('GOOGLE_OAUTH_WEB_JSON inválido; se mantiene archivo local');
+            }
+        }
 
         // ID de la carpeta de Drive donde subirás archivos
         $folderId = config('services.google.folder_id');
