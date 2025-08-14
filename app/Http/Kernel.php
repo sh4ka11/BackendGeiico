@@ -66,6 +66,8 @@ class Kernel extends HttpKernel
         
         'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
         'ability' => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
+        'check.file.owner' => \App\Http\Middleware\CheckFileOwnership::class,
+        'check.file.ownership' => \App\Http\Middleware\CheckFileOwnership::class, // alias alterno
     ];
 
     /**
@@ -76,7 +78,20 @@ class Kernel extends HttpKernel
      * @var array<string, class-string|string>
      */
     protected $routeMiddleware = [
-        // ... otros middleware
+        // Otros middlewares...
+        'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
+        'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
+        'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,
+        'can' => \Illuminate\Auth\Middleware\Authorize::class,
+        'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+        'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
+        'signed' => \App\Http\Middleware\ValidateSignature::class,
+        'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+        'check.role' => \App\Http\Middleware\CheckRole::class,
+        'check.permission' => \App\Http\Middleware\CheckPermission::class,
+        'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
         'check.file.owner' => \App\Http\Middleware\CheckFileOwnership::class,
+        'check.file.ownership' => \App\Http\Middleware\CheckFileOwnership::class,
     ];
 }

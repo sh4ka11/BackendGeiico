@@ -12,4 +12,10 @@ class DriveFileBackup extends Model
     protected $fillable = [
         'user_id', 'drive_file_id', 'name', 'mime_type', 'parent_id', 'deleted_at'
     ];
+
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
+    ];
 }

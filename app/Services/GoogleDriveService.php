@@ -349,15 +349,24 @@ public function createFolder(string $folderName, ?string $parentId = null): stri
      * @param string $fileId El ID del archivo a mover a la papelera
      * @return void
      */
-    public function trashFile(string $fileId): void
+    public function trashFile(string $fileId): bool
     {
-        // En Google Drive, mover a la papelera es establecer la propiedad 'trashed' a true
-        $file = new \Google\Service\Drive\DriveFile();
-        $file->setTrashed(true);
-        
-        $this->service->files->update($fileId, $file);
-        
-        Log::info("Archivo movido a la papelera: {$fileId}");
+        try {
+            // Crear el objeto DriveFile con la propiedad 'trashed' en true
+            $driveFile = new \Google\Service\Drive\DriveFile();
+            $driveFile->setTrashed(true);
+            
+            // Actualizar el archivo
+            $this->service->files->update($fileId, $driveFile, [
+                'fields' => 'id, name, trashed'
+            ]);
+            
+            Log::info("Archivo movido a papelera en Google Drive: {$fileId}");
+            return true;
+        } catch (Exception $e) {
+            Log::error("Error al mover archivo a papelera en Google Drive: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -423,13 +432,27 @@ public function createFolder(string $folderName, ?string $parentId = null): stri
      * Elimina permanentemente un archivo (sin posibilidad de recuperación).
      *
      * @param string $fileId El ID del archivo a eliminar permanentemente
-     * @return void
+     * @return bool Indica si la operación fue exitosa
      */
-    public function permanentlyDeleteFile(string $fileId): void
+    public function permanentlyDeleteFile(string $fileId): bool
     {
-        $this->service->files->delete($fileId);
-        
-        Log::info("Archivo eliminado permanentemente: {$fileId}");
+        try {
+            $this->service->files->delete($fileId);
+            Log::info("Archivo eliminado permanentemente: {$fileId}");
+            return true;
+        } catch (\Google\Service\Exception $e) {
+            // Si el error es 404 (no encontrado), consideramos que ya está eliminado
+            $error = json_decode($e->getMessage(), true);
+            if (isset($error['error']['code']) && $error['error']['code'] == 404) {
+                Log::info("El archivo {$fileId} ya no existe en Google Drive, se considera eliminado");
+                return true;
+            }
+            // Cualquier otro error lo propagamos
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error("Error al eliminar permanentemente el archivo {$fileId}: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -449,5 +472,157 @@ public function createFolder(string $folderName, ?string $parentId = null): stri
         
         Log::info("Papelera vaciada: {$count} archivos eliminados permanentemente");
         return $count;
+    }
+
+    /**
+     * Comprobar si existe un archivo con el mismo nombre en la carpeta especificada
+     *
+     * @param string|null $parentId ID de la carpeta padre
+     * @param string $fileName Nombre del archivo a comprobar
+     * @return bool True si el archivo existe, false en caso contrario
+     */
+    public function checkFileExists(?string $parentId, string $fileName): bool
+    {
+        try {
+            $query = "name = '" . str_replace("'", "\\'", $fileName) . "' and trashed = false";
+            
+            if ($parentId) {
+                $query .= " and '" . str_replace("'", "\\'", $parentId) . "' in parents";
+            } else {
+                $query .= " and '" . $this->folderId . "' in parents";
+            }
+            
+            $response = $this->service->files->listFiles([
+                'q' => $query,
+                'spaces' => 'drive',
+                'fields' => 'files(id, name)'
+            ]);
+            
+            $files = $response->getFiles();
+            return !empty($files);
+        } catch (\Exception $e) {
+            Log::error('Error al comprobar si el archivo existe en Drive: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Comprobar si existe una carpeta con el mismo nombre en la carpeta padre especificada
+     *
+     * @param string|null $parentId ID de la carpeta padre
+     * @param string $folderName Nombre de la carpeta a comprobar
+     * @return bool True si la carpeta existe, false en caso contrario
+     */
+    public function checkFolderExists(?string $parentId, string $folderName): bool
+    {
+        try {
+            // Construir consulta para encontrar carpetas con el mismo nombre
+            $query = "name = '" . str_replace("'", "\\'", $folderName) . "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+            
+            // Añadir restricción de carpeta padre
+            if ($parentId) {
+                $query .= " and '" . str_replace("'", "\\'", $parentId) . "' in parents";
+            } else {
+                $query .= " and '" . $this->folderId . "' in parents";
+            }
+            
+            $response = $this->service->files->listFiles([
+                'q' => $query,
+                'spaces' => 'drive',
+                'fields' => 'files(id, name)'
+            ]);
+            
+            $folders = $response->getFiles();
+            return !empty($folders);
+        } catch (\Exception $e) {
+            Log::error('Error al comprobar si la carpeta existe en Drive: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Renombra un archivo o carpeta en Google Drive
+     * 
+     * @param string $fileId ID del archivo o carpeta
+     * @param string $newName Nuevo nombre
+     * @return bool Indica si la operación fue exitosa
+     */
+    public function renameFile(string $fileId, string $newName): bool
+    {
+        try {
+            // Crear el objeto DriveFile con el nuevo nombre
+            $fileMetadata = new \Google\Service\Drive\DriveFile();
+            $fileMetadata->setName($newName);
+            
+            // Actualizar el archivo
+            $updatedFile = $this->service->files->update($fileId, $fileMetadata, [
+                'fields' => 'id, name'
+            ]);
+            
+            Log::info("Archivo renombrado en Google Drive: {$fileId} -> {$newName}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Error al renombrar archivo en Google Drive: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Mueve un archivo o carpeta a una nueva ubicación en Google Drive
+     * 
+     * @param string $fileId ID del archivo o carpeta a mover
+     * @param string $newParentId ID de la nueva carpeta padre
+     * @return bool Indica si la operación fue exitosa
+     */
+    public function moveFile(string $fileId, string $newParentId): bool
+    {
+        try {
+            // Primero obtenemos los padres actuales
+            $file = $this->service->files->get($fileId, ['fields' => 'parents']);
+            $previousParents = join(',', $file->getParents());
+            
+            // Actualizamos la ubicación del archivo
+            $this->service->files->update($fileId, new \Google\Service\Drive\DriveFile(), [
+                'addParents' => $newParentId,
+                'removeParents' => $previousParents,
+                'fields' => 'id, parents'
+            ]);
+            
+            Log::info("Archivo movido en Google Drive: {$fileId} -> {$newParentId}");
+            return true;
+        } catch (\Exception $e) {
+            Log::error("Error al mover archivo en Google Drive: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Copia un archivo a una nueva ubicación en Google Drive
+     * 
+     * @param string $fileId ID del archivo a copiar
+     * @param string $newParentId ID de la carpeta destino
+     * @return string|false ID del archivo copiado o false si falla
+     */
+    public function copyFile(string $fileId, string $newParentId): string|false
+    {
+        try {
+            // Primero obtenemos los metadatos del archivo original
+            $file = $this->service->files->get($fileId, ['fields' => 'name,mimeType']);
+            
+            // Creamos el objeto para la copia
+            $copyMetadata = new \Google\Service\Drive\DriveFile([
+                'name' => $file->getName(),
+                'parents' => [$newParentId]
+            ]);
+            
+            // Realizamos la copia
+            $copiedFile = $this->service->files->copy($fileId, $copyMetadata, ['fields' => 'id,name,parents,mimeType']);
+            
+            Log::info("Archivo copiado en Google Drive: {$fileId} -> {$copiedFile->getId()} en carpeta {$newParentId}");
+            return $copiedFile->getId();
+        } catch (\Exception $e) {
+            Log::error("Error al copiar archivo en Google Drive: " . $e->getMessage());
+            return false;
+        }
     }
 }

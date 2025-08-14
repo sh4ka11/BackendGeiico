@@ -24,3 +24,4 @@ Route::get('/google-callback', [GoogleController::class, 'handleGoogleCallback']
 // Route::get('/dashboard', function () {
 //     return view('dashboard');
 // })->middleware('auth')->name('dashboard');
+
