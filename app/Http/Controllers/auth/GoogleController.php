@@ -16,9 +16,17 @@ class GoogleController extends Controller
     /**
      * Redirige al consent screen de Google.
      */
-    public function redirectToGoogle(): RedirectResponse
+    public function redirectToGoogle(Request $request): RedirectResponse
     {
-        return Socialite::driver('google')->redirect();
+        // Construye callback según el host actual (local o Railway)
+        $redirectUri = $request->getSchemeAndHttpHost() . '/google-callback';
+
+        // Sobrescribe dinámicamente services.google.redirect
+        config(['services.google.redirect' => $redirectUri]);
+
+        return Socialite::driver('google')
+            // ->stateless() // descomenta si tienes problemas de STATE mismatch detrás de proxy
+            ->redirect();
     }
 
     /**
