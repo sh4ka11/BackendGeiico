@@ -33,5 +33,6 @@ return [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect'      => env('GOOGLE_REDIRECT_URI', rtrim(config('app.url'), '/') . '/google-callback'),
+        'folder_id'     => env('GOOGLE_FOLDER_ID'),
     ],
 ];
