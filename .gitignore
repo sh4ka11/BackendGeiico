@@ -16,8 +16,4 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
-# Excluir archivos de credenciales de Google
-/storage/app/google/credentials.json
-/storage/app/google/service-account.json
-# Alternativa más general para excluir todos los archivos JSON en esta carpeta
-/storage/app/google/*.json
+
