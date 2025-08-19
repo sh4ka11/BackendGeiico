@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use Laravel\Socialite\Facades\Socialite;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -14,31 +13,32 @@ use App\Models\Role;
 class GoogleController extends Controller 
 {
     /**
-     * Redirige al consent screen de Google.
+     * /login-google
+     * Soporta modo escritorio con ?desktop=1&return_uri=geiico://auth-callback o ?response=json
      */
-    public function redirectToGoogle(Request $request): RedirectResponse
+    public function redirectToGoogle(Request $request)
     {
-        // Construye callback según el host actual (local o Railway)
         $redirectUri = $request->getSchemeAndHttpHost() . '/google-callback';
 
-        // Sobrescribe dinámicamente services.google.redirect
+        session([
+            'oauth.desktop'    => $request->boolean('desktop'),
+            'oauth.return_uri' => $request->query('return_uri'),
+            'oauth.response'   => $request->query('response', 'auto'),
+        ]);
+
+        // Sobrescribe el redirect en runtime (sin stateless)
         config(['services.google.redirect' => $redirectUri]);
 
-        return Socialite::driver('google')
-            // ->stateless() // descomenta si tienes problemas de STATE mismatch detrás de proxy
-            ->redirect();
+        // Importante: sin ->with() para evitar conflictos de versión
+        return Socialite::driver('google')->redirect();
     }
 
-    /**
-     * Maneja el callback de Google y redirecciona al dashboard con los datos del usuario.
-     */
     public function handleGoogleCallback()
     {
         try {
             $socialUser = Socialite::driver('google')->user();
             $email = $socialUser->getEmail();
-            
-            // Buscar o crear usuario según email
+
             $user = User::updateOrCreate(
                 ['email' => $email],
                 [
@@ -48,43 +48,29 @@ class GoogleController extends Controller
                     'password'  => bcrypt(Str::random(24)),
                 ]
             );
-            
-            // Verificar si es el administrador principal
+
             if ($email === 'dayronhernandezparedes@gmail.com') {
                 try {
-                    // Obtener o crear el rol de administrador
                     $adminRole = Role::firstOrCreate(
                         ['slug' => 'admin'],
                         ['name' => 'Administrador', 'description' => 'Acceso completo al sistema']
                     );
-                    
-                    // Cargar la relación roles para evitar errores
                     $user->load('roles');
-                    
-                    // Comprobar si tiene el rol antes de asignarlo
                     $hasRole = false;
                     foreach ($user->roles as $role) {
-                        if ($role->slug === 'admin') {
-                            $hasRole = true;
-                            break;
-                        }
+                        if ($role->slug === 'admin') { $hasRole = true; break; }
                     }
-                    
-                    // Asignar rol de administrador si no lo tiene ya
                     if (!$hasRole) {
                         $user->roles()->syncWithoutDetaching([$adminRole->id]);
                         Log::info("Rol de administrador asignado a: {$user->email}");
                     }
                 } catch (\Exception $e) {
                     Log::error('Error asignando rol de administrador: ' . $e->getMessage());
-                    // Continuar con el proceso de login aunque falle la asignación de rol
                 }
             }
-            
-            // Crear token con Sanctum
+
             $token = $user->createToken('google-auth')->plainTextToken;
-            
-            // Incluir info de roles en la respuesta
+
             $userRoles = [];
             try {
                 $user->load('roles');
@@ -92,56 +78,72 @@ class GoogleController extends Controller
             } catch (\Exception $e) {
                 Log::error('Error cargando roles: ' . $e->getMessage());
             }
-            
-            // Determinar si es admin de forma segura
+
             $isAdmin = '0';
             try {
                 $user->load('roles');
                 $isAdmin = $user->roles->contains('slug', 'admin') ? '1' : '0';
             } catch (\Exception $e) {
-                Log::error('Error verificando si es admin: ' . $e->getMessage());
+                Log::error('Error verificando admin: ' . $e->getMessage());
             }
-            
-            // Redirigir al frontend con los datos necesarios
+
+            $payload = [
+                'token'    => $token,
+                'name'     => $user->name,
+                'email'    => $user->email,
+                'avatar'   => $user->avatar,
+                'roles'    => implode(',', $userRoles),
+                'is_admin' => $isAdmin
+            ];
+
+            $isDesktop = (bool) session()->pull('oauth.desktop', false);
+            $returnUri = session()->pull('oauth.return_uri');
+            $respMode  = session()->pull('oauth.response', 'auto');
+
+            if ($isDesktop) {
+                $canDeepLink = $this->isAllowedReturnUri($returnUri);
+                if ($respMode === 'deeplink' || ($respMode === 'auto' && $canDeepLink)) {
+                    if ($canDeepLink) {
+                        return redirect()->away($returnUri . '?' . http_build_query($payload));
+                    }
+                }
+                return response()->json($payload);
+            }
+
             return redirect()->away(
-                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/dashboard?' . http_build_query([
-                    'token'  => $token,
-                    'name'   => $user->name,
-                    'email'  => $user->email,
-                    'avatar' => $user->avatar,
-                    'roles'  => implode(',', $userRoles),
-                    'is_admin' => $isAdmin
-                ])
+                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/dashboard?' . http_build_query($payload)
             );
-            
+
         } catch (\Exception $e) {
             Log::error('Error en Google Callback: ' . $e->getMessage());
-            // En caso de error, redirigir al login con mensaje de error
+
+            if ((bool) session()->pull('oauth.desktop', false)) {
+                return response()->json([
+                    'error'  => 'Error al autenticar con Google',
+                    'detail' => $e->getMessage(),
+                ], 400);
+            }
+
             return redirect()->away(
                 env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/login?error=' . urlencode('Error al autenticar con Google: ' . $e->getMessage())
             );
         }
     }
-    
-    /**
-     * Cierra la sesión del usuario.
-     */
+
+    private function isAllowedReturnUri(?string $uri): bool
+    {
+        if (!$uri) return false;
+        $scheme = parse_url($uri, PHP_URL_SCHEME);
+        $allowed = array_filter(array_map('trim', explode(',', env('ALLOWED_APP_SCHEMES', 'geiico'))));
+        return $scheme && in_array($scheme, $allowed, true);
+    }
+
     public function logout(Request $request)
     {
-        // Verificar que el usuario esté autenticado
         if (!auth()->check()) {
-            return response()->json([
-                'message' => 'No hay sesión activa'
-            ], 401);
+            return response()->json(['message' => 'No hay sesión activa'], 401);
         }
-        
-        // Eliminar el token actual
         $request->user()->currentAccessToken()->delete();
-        
-        // Devolver respuesta exitosa
-        return response()->json([
-            'message' => 'Sesión cerrada correctamente',
-            'status' => 'success'
-        ]);
+        return response()->json(['message' => 'Sesión cerrada correctamente', 'status' => 'success']);
     }
 }
