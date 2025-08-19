@@ -16,14 +16,13 @@ class GoogleDriveService
 
     public function __construct()
     {
-        // Inicializa el cliente de Google (NO CAMBIADO)
         $this->client = new Client();
         $this->client->setApplicationName(env('GOOGLE_APPLICATION_NAME'));
-        $this->client->setAuthConfig(storage_path('app/google/service-account.json'));
+        // $this->client->setAuthConfig(storage_path('app/google/service-account.json')); // Comentado: no usar archivo local
         $this->client->addScope(GoogleDrive::DRIVE);
         $this->client->setAccessType('offline');
 
-        // Añadido: usa credenciales de Railway si están definidas (sobrescribe las locales)
+        // Usa solo las credenciales de Railway (variables de entorno)
         $saJson   = env('GOOGLE_SERVICE_ACCOUNT_JSON'); // Cuenta de servicio (recomendado)
         $oauthJson= env('GOOGLE_OAUTH_WEB_JSON');       // OAuth web (opcional)
 
@@ -33,7 +32,8 @@ class GoogleDriveService
                 $this->client->setAuthConfig($cfg);
                 Log::info('GoogleDriveService: usando GOOGLE_SERVICE_ACCOUNT_JSON');
             } else {
-                Log::warning('GOOGLE_SERVICE_ACCOUNT_JSON inválido; se mantiene archivo local');
+                Log::warning('GOOGLE_SERVICE_ACCOUNT_JSON inválido');
+                throw new \Exception('GOOGLE_SERVICE_ACCOUNT_JSON inválido');
             }
         } elseif (!empty($oauthJson)) {
             $cfg = json_decode($oauthJson, true);
@@ -41,8 +41,11 @@ class GoogleDriveService
                 $this->client->setAuthConfig($cfg);
                 Log::info('GoogleDriveService: usando GOOGLE_OAUTH_WEB_JSON');
             } else {
-                Log::warning('GOOGLE_OAUTH_WEB_JSON inválido; se mantiene archivo local');
+                Log::warning('GOOGLE_OAUTH_WEB_JSON inválido');
+                throw new \Exception('GOOGLE_OAUTH_WEB_JSON inválido');
             }
+        } else {
+            throw new \Exception('No se encontró configuración de Google Service Account en variables de entorno.');
         }
 
         // ID de la carpeta de Drive donde subirás archivos
