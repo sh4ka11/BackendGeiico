@@ -21,7 +21,7 @@ class GoogleController extends Controller
     }
 
     /**
-     * Callback de Google OAuth que devuelve una vista Blade con los datos.
+     * Callback de Google OAuth que devuelve JSON para apps de escritorio.
      */
     public function handleGoogleCallback()
     {
@@ -52,26 +52,22 @@ class GoogleController extends Controller
 
             $token = $user->createToken('google-auth')->plainTextToken;
 
-            // Devuelve la vista Blade con los datos
-            return view('auth.native-callback', [
-                'authData' => [
-                    'token' => $token,
-                    'user'  => [
-                        'id'    => $user->id,
-                        'name'  => $user->name,
-                        'email' => $user->email,
-                        'avatar'=> $user->avatar,
-                        'roles' => $user->roles->pluck('slug'),
-                    ],
-                ]
+            // Devuelve JSON para que la app de escritorio lo procese
+            return response()->json([
+                'token' => $token,
+                'user'  => [
+                    'id'    => $user->id,
+                    'name'  => $user->name,
+                    'email' => $user->email,
+                    'avatar'=> $user->avatar,
+                    'roles' => $user->roles->pluck('slug'),
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Error en Google Callback: ' . $e->getMessage());
-            return view('auth.native-callback', [
-                'authData' => [
-                    'error' => 'Error al autenticar con Google'
-                ]
-            ]);
+            return response()->json([
+                'error' => 'Error al autenticar con Google'
+            ], 401);
         }
     }
 }
