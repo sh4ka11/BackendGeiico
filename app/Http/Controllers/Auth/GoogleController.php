@@ -1,6 +1,5 @@
 <?php
 
-
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
@@ -21,7 +20,7 @@ class GoogleController extends Controller
     }
 
     /**
-     * Callback de Google OAuth que envía los datos al opener y cierra el popup.
+     * Callback de Google OAuth que redirige al dashboard con el token.
      */
     public function handleGoogleCallback()
     {
@@ -52,26 +51,15 @@ class GoogleController extends Controller
 
             $token = $user->createToken('google-auth')->plainTextToken;
 
-            // Devuelve la vista Blade que envía el token al opener y cierra el popup
-            return view('auth.google-popup-callback', [
-                'authData' => [
-                    'token' => $token,
-                    'user'  => [
-                        'id'    => $user->id,
-                        'name'  => $user->name,
-                        'email' => $user->email,
-                        'avatar'=> $user->avatar,
-                        'roles' => $user->roles->pluck('slug'),
-                    ],
-                ]
-            ]);
+            // Redirige al dashboard del frontend con el token en la URL
+            return redirect()->away(
+                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/dashboard?token=' . $token
+            );
         } catch (\Exception $e) {
             Log::error('Error en Google Callback: ' . $e->getMessage());
-            return view('auth.google-popup-callback', [
-                'authData' => [
-                    'error' => 'Error al autenticar con Google'
-                ]
-            ]);
+            return redirect()->away(
+                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/login?error=' . urlencode('Error al autenticar con Google')
+            );
         }
     }
 }
