@@ -18,7 +18,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://127.0.0.1:8001')],
+    'allowed_origins' => [
+        'https://frontendgeiico-production-a2ae.up.railway.app',
+    ],
 
     'allowed_origins_patterns' => [],
 

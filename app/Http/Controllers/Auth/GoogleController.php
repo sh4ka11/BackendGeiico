@@ -53,12 +53,12 @@ class GoogleController extends Controller
 
             // Redirige al dashboard del frontend con el token en la URL
             return redirect()->away(
-                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/dashboard?token=' . $token
+                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') . '/dashboard?token=' . $token
             );
         } catch (\Exception $e) {
             Log::error('Error en Google Callback: ' . $e->getMessage());
             return redirect()->away(
-                env('FRONTEND_URL', 'http://127.0.0.1:8001') . '/login?error=' . urlencode('Error al autenticar con Google')
+                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') . '/login?error=' . urlencode('Error al autenticar con Google')
             );
         }
     }
