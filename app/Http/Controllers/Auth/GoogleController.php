@@ -20,7 +20,7 @@ class GoogleController extends Controller
     }
 
     /**
-     * Callback de Google OAuth que redirige al dashboard con el token.
+     * Callback de Google OAuth que redirige al dashboard con todos los datos en la URL.
      */
     public function handleGoogleCallback()
     {
@@ -51,14 +51,19 @@ class GoogleController extends Controller
 
             $token = $user->createToken('google-auth')->plainTextToken;
 
-            // Redirige al dashboard del frontend con el token en la URL
+            // Redirige al dashboard del frontend con todos los datos en la URL
             return redirect()->away(
-                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') . '/dashboard?token=' . $token
+                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') .
+                '/dashboard?token=' . urlencode($token) .
+                '&name=' . urlencode($user->name) .
+                '&email=' . urlencode($user->email) .
+                '&avatar=' . urlencode($user->avatar)
             );
         } catch (\Exception $e) {
             Log::error('Error en Google Callback: ' . $e->getMessage());
             return redirect()->away(
-                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') . '/login?error=' . urlencode('Error al autenticar con Google')
+                env('FRONTEND_URL', 'https://frontendgeiico-production-a2ae.up.railway.app') .
+                '/login?error=' . urlencode('Error al autenticar con Google')
             );
         }
     }
